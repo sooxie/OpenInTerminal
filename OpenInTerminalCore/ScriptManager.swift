@@ -43,6 +43,76 @@ public class ScriptManager {
     public func getGeneralScriptName() -> String {
         return Constants.generalScript
     }
+
+    /// Returns the Finder selection, or the front window when nothing is selected.
+    /// Used when `FIFinderSyncController` gives no URLs, which happens for a
+    /// toolbar click outside the directories the extension is allowed to observe.
+    public func getFinderTargetScript() -> String {
+        let script = """
+        on run
+            tell application "Finder"
+                set pathList to {}
+                set finderSelList to {}
+                try
+                    set finderSelList to selection as alias list
+                end try
+                if finderSelList is not {} then
+                    repeat with theItem in finderSelList
+                        set end of pathList to POSIX path of (contents of theItem)
+                    end repeat
+                else
+                    try
+                        set end of pathList to POSIX path of ((target of front Finder window) as text)
+                    on error
+                        set end of pathList to POSIX path of (path to desktop folder)
+                    end try
+                end if
+                return pathList
+            end tell
+        end run
+        """
+        return script
+    }
+
+    public func getFinderTargetScriptName() -> String {
+        return Constants.finderTargetScript
+    }
+
+    /// Ask Finder for the current selection or window. The completion receives
+    /// POSIX paths, or an empty list when the script is missing or fails.
+    public func resolveFinderTarget(completion: @escaping ([String]) -> Void) {
+        guard let scriptURL = getScriptURL(with: Constants.finderTargetScript),
+              FileManager.default.fileExists(atPath: scriptURL.path),
+              let script = try? NSUserAppleScriptTask(url: scriptURL) else {
+            logw("finder target script is missing")
+            completion([])
+            return
+        }
+        script.execute(withAppleEvent: nil) { result, error in
+            if let error = error {
+                logw("cannot resolve Finder target: \(error)")
+                completion([])
+                return
+            }
+            completion(Self.paths(from: result))
+        }
+    }
+
+    static func paths(from descriptor: NSAppleEventDescriptor?) -> [String] {
+        guard let descriptor = descriptor else { return [] }
+        if let path = descriptor.stringValue, !path.isEmpty {
+            return [path]
+        }
+        let count = descriptor.numberOfItems
+        guard count > 0 else { return [] }
+        var paths: [String] = []
+        for index in 1...count {
+            if let path = descriptor.atIndex(index)?.stringValue, !path.isEmpty {
+                paths.append(path)
+            }
+        }
+        return paths
+    }
     
     /// Open path in a new tab of Terminal
     public func getTerminalNewTabAppleScript() -> String {

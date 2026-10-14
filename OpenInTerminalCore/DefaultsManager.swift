@@ -355,6 +355,26 @@ public class DefaultsManager {
     }
 
     // MARK: - Advanced Settings
+
+    /// Copy settings out of the legacy app-group suite once.
+    /// The host then keeps them in its own preference domain, which the Finder
+    /// extension reads through a shared-preference exception.
+    public func migrateFromAppGroupIfNeeded() {
+        guard Bundle.main.bundleIdentifier == Constants.Id.mainApp else { return }
+        guard Defaults[.migratedFromAppGroup] == false else { return }
+
+        var copied = 0
+        if let group = GroupDefaults,
+           let domain = group.persistentDomain(forName: Constants.Id.Group) {
+            for (key, value) in domain where Defaults.object(forKey: key) == nil {
+                Defaults.set(value, forKey: key)
+                copied += 1
+            }
+        }
+        Defaults[.migratedFromAppGroup] = true
+        Defaults.synchronize()
+        logw("Migrated \(copied) preferences from the app group")
+    }
     
     public func firstSetup() {
         guard isFirstSetup == false else { return }
@@ -379,8 +399,13 @@ public class DefaultsManager {
     
     public func removeAllUserDefaults() {
         logw("Remove all UserDefaults")
-        Defaults.removePersistentDomain(forName: Constants.Id.Group)
-        Defaults.synchronize()
+        if let bundleID = Bundle.main.bundleIdentifier {
+            UserDefaults.standard.removePersistentDomain(forName: bundleID)
+        }
+        UserDefaults.standard.removePersistentDomain(forName: Constants.Id.Group)
+        GroupDefaults?.removePersistentDomain(forName: Constants.Id.Group)
+        UserDefaults.standard.synchronize()
+        GroupDefaults?.synchronize()
     }
     
 }

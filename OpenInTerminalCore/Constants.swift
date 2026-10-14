@@ -13,6 +13,9 @@ struct Constants {
     /// Identifier
     struct Id {
         static let Group = "group.wang.jianing.app.OpenInTerminal"
+        /// Host app bundle id. Also the CFPreferences domain shared with the Finder extension.
+        static let mainApp = "wang.jianing.app.OpenInTerminal"
+        static let finderExtension = "wang.jianing.app.OpenInTerminal.OpenInTerminalFinderExtension"
         static let OpenInTerminalLite = "wang.jianing.app.OpenInTerminal-Lite"
         static let OpenInEditorLite = "wang.jianing.app.OpenInEditor-Lite"
         static let Finder = "com.apple.Finder"
@@ -22,6 +25,8 @@ struct Constants {
     static let generalScript = "generalScript"
     /// AppleScript for opening a new tab in Terminal
     static let terminalNewTabScript = "terminalNewTabScript"
+    /// AppleScript that returns the Finder selection, or the front window target.
+    static let finderTargetScript = "finderTargetScript"
     
     struct Commands {
         static let alacritty = "open -na Alacritty --args --working-directory"

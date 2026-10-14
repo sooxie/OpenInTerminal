@@ -8,16 +8,22 @@
 
 import Foundation
 
-/// group defaults
+/// Legacy app-group defaults. Kept only so existing settings can be copied once.
+/// macOS 27 does not persist this suite for a non-sandboxed host, which made
+/// Preferences look unsaved and left the Finder extension with an empty menu.
 let GroupDefaults = UserDefaults(suiteName: Constants.Id.Group)
 
 /// current defaults
 public var Defaults: UserDefaults = {
-    if Bundle.main.bundleIdentifier == Constants.Id.OpenInTerminalLite ||
-        Bundle.main.bundleIdentifier == Constants.Id.OpenInEditorLite {
+    switch Bundle.main.bundleIdentifier {
+    case Constants.Id.OpenInTerminalLite, Constants.Id.OpenInEditorLite:
         return UserDefaults.standard
-    } else {
-        return GroupDefaults ?? UserDefaults.standard
+    case Constants.Id.finderExtension:
+        // The extension is sandboxed. The read-only shared-preference exception
+        // lets it see the host app's domain; an App Group container does not.
+        return UserDefaults(suiteName: Constants.Id.mainApp) ?? UserDefaults.standard
+    default:
+        return UserDefaults.standard
     }
 }()
 
@@ -56,6 +62,7 @@ public extension DefaultsKeys {
     static let onlyActivateShortcutsInFinder = DefaultsKey<Bool>("OnlyActivateShortcutsInFinder")
     static let neovimCommand = DefaultsKey<String>("NeovimCommand")
     static let gitkrakenCommand = DefaultsKey<String>("GitkrakenCommand")
+    static let migratedFromAppGroup = DefaultsKey<Bool>("MigratedFromAppGroup")
     
     // for Lite
     static let liteDefaultTerminal = DefaultsKey<String>("LiteDefaultTerminal")

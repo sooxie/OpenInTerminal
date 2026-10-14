@@ -27,6 +27,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Lifecycle
     
     func applicationDidFinishLaunching(_ notification: Notification) {
+        DefaultsManager.shared.migrateFromAppGroupIfNeeded()
         DefaultsManager.shared.firstSetup()
         addObserver()
         terminateOpenInTerminalHelper()

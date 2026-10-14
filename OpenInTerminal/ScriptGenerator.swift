@@ -41,6 +41,12 @@ func checkScripts() throws {
         .appendingPathExtension("scpt")
     let generalScript = ScriptManager.shared.getGeneralScript()
     try writeScriptIfNeeded(at: generalScriptPath, with: generalScript)
+
+    let finderTargetName = ScriptManager.shared.getFinderTargetScriptName()
+    let finderTargetPath = finderExScriptPath
+        .appendingPathComponent(finderTargetName)
+        .appendingPathExtension("scpt")
+    try writeScriptIfNeeded(at: finderTargetPath, with: ScriptManager.shared.getFinderTargetScript())
     
     // write terminal new tab script
     let tabScriptName = ScriptManager.shared.getTerminalNewTabScriptName()

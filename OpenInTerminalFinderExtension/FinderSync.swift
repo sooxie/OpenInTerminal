@@ -15,17 +15,37 @@ class FinderSync: FIFinderSync {
     
     override init() {
         super.init()
-        let finderSync = FIFinderSyncController.default()
-        if let mountedVolumes = FileManager.default.mountedVolumeURLs(includingResourceValuesForKeys: nil, options: [.skipHiddenVolumes]) {
-            finderSync.directoryURLs = Set<URL>(mountedVolumes)
+        let center = NSWorkspace.shared.notificationCenter
+        let names: [NSNotification.Name] = [
+            NSWorkspace.didMountNotification,
+            NSWorkspace.didUnmountNotification,
+            NSWorkspace.didRenameVolumeNotification,
+            NSWorkspace.didWakeNotification
+        ]
+        for name in names {
+            center.addObserver(self, selector: #selector(volumesDidChange(_:)), name: name, object: nil)
         }
-        // Monitor volumes
-        let notificationCenter = NSWorkspace.shared.notificationCenter
-        notificationCenter.addObserver(forName: NSWorkspace.didMountNotification, object: nil, queue: .main) { notification in
-            if let volumeURL = notification.userInfo?[NSWorkspace.volumeURLUserInfoKey] as? URL {
-                finderSync.directoryURLs.insert(volumeURL)
+        updateObservedDirectories()
+    }
+
+    deinit {
+        NSWorkspace.shared.notificationCenter.removeObserver(self)
+    }
+
+    /// Finder does not treat the boot volume and other mounted volumes as one
+    /// scope. Register both, or a toolbar click has no target URL.
+    @objc private func volumesDidChange(_ notification: Notification) {
+        updateObservedDirectories()
+    }
+
+    private func updateObservedDirectories() {
+        var directories: Set<URL> = [URL(fileURLWithPath: "/", isDirectory: true)]
+        if let volumes = FileManager.default.mountedVolumeURLs(includingResourceValuesForKeys: nil, options: [.skipHiddenVolumes]) {
+            for volume in volumes where volume.isFileURL {
+                directories.insert(volume.standardizedFileURL)
             }
         }
+        FIFinderSyncController.default().directoryURLs = directories
     }
 
     override var toolbarItemName: String {
@@ -43,6 +63,8 @@ class FinderSync: FIFinderSync {
     }
     
     override func menu(for menuKind: FIMenuKind) -> NSMenu {
+        // Pick up preference edits made by the host app since this process started.
+        Defaults.synchronize()
         var menu = NSMenu(title: "")
         
         switch menuKind {
@@ -124,7 +146,9 @@ class FinderSync: FIFinderSync {
         // menu that will be attached under a single top level item
         let itemsMenu = useSubmenu ? NSMenu(title: "") : menu
 
-        guard let terminal = DefaultsManager.shared.defaultTerminal else { return menu }
+        // A missing preference used to return an empty menu. Finder then draws
+        // the toolbar button with no dropdown, so the click looks dead.
+        let terminal = DefaultsManager.shared.defaultTerminal ?? SupportedApps.terminal.app
         let terminalTitle = terminal.name
         let openInTerminalItem = NSMenuItem(title: terminalTitle,
                                             action: #selector(openDefaultTerminal),
@@ -133,14 +157,15 @@ class FinderSync: FIFinderSync {
         openInTerminalItem.image = terminalIcon
         itemsMenu.addItem(openInTerminalItem)
 
-        guard let editor = DefaultsManager.shared.defaultEditor else { return menu }
-        let editorTitle = editor.name
-        let openInEditorItem = NSMenuItem(title: editorTitle,
-                                            action: #selector(openDefaultEditor),
-                                            keyEquivalent: "")
-        let editorIcon = DefaultsManager.shared.getAppIcon(editor)
-        openInEditorItem.image = editorIcon
-        itemsMenu.addItem(openInEditorItem)
+        if let editor = DefaultsManager.shared.defaultEditor {
+            let editorTitle = editor.name
+            let openInEditorItem = NSMenuItem(title: editorTitle,
+                                                action: #selector(openDefaultEditor),
+                                                keyEquivalent: "")
+            let editorIcon = DefaultsManager.shared.getAppIcon(editor)
+            openInEditorItem.image = editorIcon
+            itemsMenu.addItem(openInEditorItem)
+        }
 
         // add "Copy Path"
         itemsMenu.addItem(self.copyPathItem)
@@ -202,6 +227,23 @@ class FinderSync: FIFinderSync {
     
     func open(_ app: App) {
         let urls = getSelectedPathsFromFinder()
+        if !urls.isEmpty {
+            open(app, urls: urls)
+            return
+        }
+        // Toolbar clicks outside the observed directories leave both
+        // selectedItemURLs() and targetedURL() nil. Ask Finder directly.
+        ScriptManager.shared.resolveFinderTarget { paths in
+            let resolved = paths.map { URL(fileURLWithPath: $0) }
+            guard !resolved.isEmpty else {
+                logw("Failed to open \(app.name): Finder returned no path")
+                return
+            }
+            self.open(app, urls: resolved)
+        }
+    }
+
+    func open(_ app: App, urls: [URL]) {
         do {
             try app.openInSandbox(urls)
         } catch {
